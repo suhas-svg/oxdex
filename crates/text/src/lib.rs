@@ -40,10 +40,24 @@ impl Analyzer {
     pub fn tokens<'a>(&'a self, text: &'a str) -> impl Iterator<Item = String> + 'a {
         text.unicode_words()
             .filter(|w| w.chars().count() <= MAX_TOKEN_CHARS)
-            .map(move |w| {
-                let lower = w.to_lowercase();
-                self.stemmer.stem(&lower).into_owned()
-            })
+            .map(move |w| self.term(w))
+    }
+
+    /// Like [`tokens`](Self::tokens), but also yields each word's byte offset
+    /// and original spelling, for highlighting matches in snippets.
+    pub fn tokens_with_offsets<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> impl Iterator<Item = (usize, &'a str, String)> + 'a {
+        text.unicode_word_indices()
+            .filter(|(_, w)| w.chars().count() <= MAX_TOKEN_CHARS)
+            .map(move |(i, w)| (i, w, self.term(w)))
+    }
+
+    /// The index term for one word: lowercased, then stemmed.
+    pub fn term(&self, word: &str) -> String {
+        let lower = word.to_lowercase();
+        self.stemmer.stem(&lower).into_owned()
     }
 }
 
@@ -97,6 +111,19 @@ mod tests {
         let ok = "b".repeat(64);
         let text = format!("x {junk} {ok} y");
         assert_eq!(tokenize(&text), vec!["x".to_string(), ok, "y".to_string()]);
+    }
+
+    #[test]
+    fn offsets_point_at_original_words() {
+        let text = "Café owners RUN cafés.";
+        let got: Vec<(usize, &str, String)> = super::Analyzer::global().tokens_with_offsets(text).collect();
+        assert_eq!(got.len(), 4);
+        for (i, w, _) in &got {
+            assert_eq!(&text[*i..*i + w.len()], *w);
+        }
+        assert_eq!(got[2], (13, "RUN", "run".to_string()));
+        let plain: Vec<String> = got.into_iter().map(|t| t.2).collect();
+        assert_eq!(plain, tokenize(text), "same terms as tokens()");
     }
 
     #[test]

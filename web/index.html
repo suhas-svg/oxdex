@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oxdex</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">Oxdex</a>
+    <form id="search-form" role="search">
+      <input id="q" name="q" type="search" maxlength="256" autocomplete="off" autofocus
+             placeholder="Search Wikipedia  (AND by default · OR · -exclude)" aria-label="Search query">
+      <button type="submit">Search</button>
+    </form>
+  </header>
+  <main>
+    <p id="status" aria-live="polite"></p>
+    <ol id="results"></ol>
+    <nav id="pager" hidden>
+      <button id="prev" type="button">← Prev</button>
+      <span id="page"></span>
+      <button id="next" type="button">Next →</button>
+    </nav>
+  </main>
+  <footer id="footer"></footer>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -6,6 +6,7 @@
 
 mod mem;
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -89,7 +90,11 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
     let total = ds.num_docs();
     info!(store = %store.display(), docs = total, mem_mb, batch, threads = rayon::current_num_threads(), "starting index build");
 
+    // Title field: each article's title plus every redirect pointing at it,
+    // so "USA" finds "United States". It lives in <out>/title/.
+    let redirects = load_redirects(store)?;
     let mut builder = IndexBuilder::create(out, mem_mb * 1024 * 1024)?;
+    let mut title_builder = IndexBuilder::create(out.join("title"), (mem_mb / 4).max(64) * 1024 * 1024)?;
     let mut docs_iter = ds.iter();
     let mut last_log = Instant::now();
     let mut batch_docs: Vec<Doc> = Vec::with_capacity(batch);
@@ -102,12 +107,23 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
         if batch_docs.is_empty() {
             break;
         }
-        let analyzed: Vec<_> = batch_docs.par_iter().map(|d| count_terms(&d.title, &d.text)).collect();
-        for (d, (terms, len)) in batch_docs.iter().zip(analyzed) {
+        let analyzed: Vec<_> = batch_docs
+            .par_iter()
+            .map(|d| {
+                let body = count_terms(&d.title, &d.text);
+                let title_text = match redirects.get(d.title.as_str()) {
+                    Some(alts) => format!("{}\n{}", d.title, alts.join("\n")),
+                    None => d.title.clone(),
+                };
+                (body, count_terms(&title_text, ""))
+            })
+            .collect();
+        for (d, ((terms, len), (tterms, tlen))) in batch_docs.iter().zip(analyzed) {
             let id = builder.add_doc(&terms, len)?;
             if id != d.id {
                 bail!("doc store gave doc {} where {id} was expected", d.id);
             }
+            title_builder.add_doc(&tterms, tlen)?;
         }
 
         if last_log.elapsed().as_secs() >= 10 {
@@ -128,7 +144,15 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
     }
 
     let tokenize_secs = started.elapsed().as_secs_f64();
+    drop(redirects);
     info!(segments = builder.num_segments() + 1, "all docs added; merging segments");
+    let tstats = title_builder.finish()?;
+    info!(
+        terms = tstats.num_terms,
+        segments = tstats.num_segments,
+        index_mb = (tstats.postings_bytes + tstats.dict_bytes + tstats.doclens_bytes) / 1_000_000,
+        "title field done"
+    );
     let stats = builder.finish()?;
     let (_, peak) = rss_fields();
     info!(
@@ -151,9 +175,44 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
     Ok(())
 }
 
+/// Reads `redirects.tsv` (redirect title → target title) into target → redirects.
+/// Redirects whose target is itself missing simply never match a doc.
+fn load_redirects(store: &Path) -> Result<HashMap<Box<str>, Vec<Box<str>>>> {
+    let path = store.join("redirects.tsv");
+    let mut map: HashMap<Box<str>, Vec<Box<str>>> = HashMap::new();
+    if !path.exists() {
+        warn!(path = %path.display(), "no redirects file; title field has titles only");
+        return Ok(map);
+    }
+    let file = std::fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+    let mut n = 0u64;
+    for line in io::BufReader::new(file).lines() {
+        let line = line?;
+        if let Some((from, to)) = line.split_once('\t')
+            && !from.is_empty()
+            && from != to
+        {
+            map.entry(to.into()).or_default().push(from.into());
+            n += 1;
+        }
+    }
+    info!(redirects = n, targets = map.len(), "loaded redirects");
+    Ok(map)
+}
+
 fn run_check(dir: &Path) -> Result<()> {
+    for sub in [dir.to_path_buf(), dir.join("title")] {
+        if sub.join("meta.json").exists() {
+            check_one(&sub)?;
+        }
+    }
+    Ok(())
+}
+
+fn check_one(dir: &Path) -> Result<()> {
     let started = Instant::now();
     let index = DiskIndex::open(dir)?;
+    info!(index = %dir.display(), "check");
     info!(terms = index.num_terms(), docs = index.meta().num_docs, "checking every posting list");
     let report = check(&index, |n| info!(terms_checked = n, "checking"));
     info!(
