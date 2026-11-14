@@ -1,0 +1,3 @@
+Tokio (software)
+
+Tokio is an asynchronous runtime for the Rust programming language. It provides an event loop, timers and non-blocking network sockets, and it schedules many lightweight tasks across a pool of worker threads. Web frameworks such as axum are built on top of Tokio.

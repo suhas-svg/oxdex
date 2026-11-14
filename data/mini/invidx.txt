@@ -1,0 +1,3 @@
+Inverted index
+
+An inverted index maps each word to the list of documents that contain it. It is the central data structure of a full-text search engine. Each entry, called a posting list, stores sorted document IDs and often the term frequency in each document. Posting lists are usually compressed with delta encoding and variable-byte codes.

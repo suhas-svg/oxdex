@@ -1,0 +1,3 @@
+Field-programmable gate array
+
+A field-programmable gate array (FPGA) is an integrated circuit that can be configured after manufacturing. An FPGA contains an array of programmable logic blocks and a hierarchy of reconfigurable interconnects. Designers describe the circuit in a hardware description language such as Verilog or VHDL, and synthesis tools map it onto the FPGA fabric. FPGAs are popular for prototyping, signal processing and low-volume products.

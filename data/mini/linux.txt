@@ -1,0 +1,3 @@
+Linux kernel
+
+The Linux kernel is a free and open-source operating system kernel first released in 1991. It manages processes, memory, file systems and device drivers. The kernel supports memory-mapped files through the mmap system call, which lets programs treat a file on disk as if it were in memory.

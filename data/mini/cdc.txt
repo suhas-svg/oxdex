@@ -1,0 +1,3 @@
+Clock domain crossing
+
+A clock domain crossing happens when a signal moves between parts of a design driven by different clocks. Without care the receiving flip-flop can become metastable. Common fixes are two-flop synchronizers for single bits and asynchronous FIFOs for buses. Linting tools check every clock domain crossing in a design.

@@ -1,0 +1,3 @@
+Compiler
+
+A compiler translates source code written in a high-level programming language into machine code. Typical stages are lexing, parsing, semantic analysis, optimization and code generation. The Rust compiler, rustc, uses LLVM as its back end for optimization and code generation.

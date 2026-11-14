@@ -1,0 +1,16 @@
+[package]
+name = "oxdex-mini"
+description = "M1 command-line search over a folder of text files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "oxdex-mini"
+path = "src/main.rs"
+
+[dependencies]
+oxdex-index.workspace = true
+oxdex-query.workspace = true
+clap.workspace = true
+anyhow.workspace = true

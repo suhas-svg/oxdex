@@ -1,0 +1,9 @@
+[package]
+name = "oxdex-index"
+description = "Oxdex inverted index (M1: in-memory)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oxdex-text.workspace = true

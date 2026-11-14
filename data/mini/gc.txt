@@ -1,0 +1,3 @@
+Garbage collection (computer science)
+
+Garbage collection is automatic memory management: the runtime finds objects that the program can no longer reach and frees them. Tracing collectors mark live objects starting from roots, while reference counting frees an object when its count drops to zero. Languages such as Java and Go use garbage collection, whereas Rust and C++ do not.

@@ -1,0 +1,3 @@
+Stemming
+
+Stemming reduces inflected words to a common root form, so that running and runs both become run. The Porter stemmer, published in 1980, applies a sequence of suffix-stripping rules. Its successor, Porter2 or the English Snowball stemmer, fixes several of its mistakes. Search engines stem both documents and queries so that variants match.

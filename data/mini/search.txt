@@ -1,0 +1,3 @@
+Search engine
+
+A search engine is a software system that finds documents matching a user query. A web search engine crawls pages, builds an index, and ranks results by relevance. Ranking functions such as BM25 and link analysis such as PageRank decide which results appear first.

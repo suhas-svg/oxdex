@@ -1,0 +1,3 @@
+Rust (programming language)
+
+Rust is a general-purpose programming language focused on performance and memory safety. Its ownership and borrowing rules let the compiler reject data races and dangling pointers at compile time without a garbage collector. Rust is used for systems programming, command-line tools, web servers and embedded firmware.

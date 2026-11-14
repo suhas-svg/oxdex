@@ -1,0 +1,3 @@
+Application-specific integrated circuit
+
+An application-specific integrated circuit (ASIC) is a chip customized for one particular use rather than general-purpose computing. Unlike an FPGA, an ASIC cannot be rewired after fabrication. ASIC design has high up-front costs for masks and verification, but the per-unit cost and power consumption are low at high volume.

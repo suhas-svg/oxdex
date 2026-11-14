@@ -1,0 +1,10 @@
+[package]
+name = "oxdex-query"
+description = "Oxdex query evaluation and BM25 ranking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+oxdex-text.workspace = true
+oxdex-index.workspace = true

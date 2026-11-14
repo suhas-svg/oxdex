@@ -1,0 +1,3 @@
+Wikipedia
+
+Wikipedia is a free online encyclopedia written collaboratively by volunteers. The English Wikipedia has more than six million articles. The Wikimedia Foundation publishes regular database dumps of every article in XML format, compressed with bzip2.

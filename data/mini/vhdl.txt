@@ -1,0 +1,3 @@
+VHDL
+
+VHDL is a hardware description language that originated in a United States defense program. It is strongly typed and verbose compared with Verilog. VHDL is widely used in Europe and in aerospace projects for FPGA and ASIC design.

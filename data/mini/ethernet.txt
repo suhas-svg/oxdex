@@ -1,0 +1,3 @@
+Ethernet
+
+Ethernet is a family of wired networking technologies standardized as IEEE 802.3. It started at 10 megabits per second over coaxial cable and now reaches 400 gigabits per second over fiber. Ethernet frames carry a source address, a destination address and a checksum.

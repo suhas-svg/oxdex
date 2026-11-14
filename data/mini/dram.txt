@@ -1,0 +1,3 @@
+Dynamic random-access memory
+
+Dynamic random-access memory (DRAM) stores each bit in a tiny capacitor that must be refreshed many times per second. DRAM is the main memory of most computers because it is dense and cheap, though slower than the SRAM used in CPU caches.

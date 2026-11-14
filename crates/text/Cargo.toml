@@ -1,0 +1,10 @@
+[package]
+name = "oxdex-text"
+description = "Tokenizer shared by the Oxdex indexer and query service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+unicode-segmentation.workspace = true
+rust-stemmers.workspace = true

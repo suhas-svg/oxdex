@@ -1,0 +1,3 @@
+Static timing analysis
+
+Static timing analysis is a method of computing the expected timing of a digital circuit without simulation. The tool checks every path between registers against the clock period and reports setup and hold violations. Static timing analysis is a standard sign-off step in both FPGA and ASIC design flows.
