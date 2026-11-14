@@ -2,7 +2,7 @@
 
 A full-text search engine written from scratch in Rust: tokenizer, inverted index, BM25 ranking. The goal is to index all of English Wikipedia and answer keyword queries in under 50 ms at p95.
 
-**Status: M2 (Wikipedia ingestion) done.** Simple English Wikipedia ingests into a compressed document store. Search still runs on the M1 in-memory engine.
+**Status: M3 (on-disk index) in progress.** The segment builder, k-way merge, VByte + skip-pointer postings, mmap reader and checker all work on Simple English Wikipedia. The full English build is pending the 27 GB dump download.
 
 ## Try it
 
@@ -15,6 +15,11 @@ cargo run --release -p oxdex-ingest -- build \
   --dump data/dumps/simplewiki-latest-pages-articles-multistream.xml.bz2 --out data/out/simple
 cargo run --release -p oxdex-ingest -- sample --store data/out/simple -n 20
 cargo run --release -p oxdex-ingest -- audit  --store data/out/simple
+
+# M3: build, check and search the on-disk index
+cargo run --release -p oxdex-indexer -- build  --store data/out/simple --out data/index/simple
+cargo run --release -p oxdex-indexer -- check  --index data/index/simple
+cargo run --release -p oxdex-indexer -- search --index data/index/simple --store data/out/simple fpga
 
 cargo test --workspace
 ```
@@ -33,6 +38,13 @@ Simple English Wikipedia, dump of 2026-11-02, Zephyrus G16 (12 threads), release
 | Clean text → `docs.bin` | 332 MB → 124 MB (zstd, 64 KiB blocks) |
 | Outgoing links saved | 3.9 M |
 | Articles with no leftover markup (`audit`) | 99.23% |
+| Index build (1 GB segment budget) | 45 s: 20 s adding docs, 25 s segment write + merge on a laptop HDD |
+| Index peak RAM (process working set) | 348–365 MB |
+| Terms / postings / tokens | 864,546 / 24.2 M / 51.2 M |
+| Index size on disk | 85.5 MB (postings 57 MB, dictionary 27 MB, doc lengths 1 MB) = 25.8% of clean text (target < 35%) |
+| `check` | 0 errors, 0.7 s |
+| Index open (mmap) | 0.7 ms |
+| Query latency, OR over all terms | 0.1 ms (`fpga`) to 5 ms (7-word query matching 110k docs) |
 
 ## Layout
 
@@ -41,9 +53,10 @@ Simple English Wikipedia, dump of 2026-11-02, Zephyrus G16 (12 threads), release
 | `crates/text` | Shared tokenizer: Unicode word split, lowercase, Porter2 stem, drop tokens > 64 chars |
 | `crates/wikitext` | Multistream index + stream reader, streaming `<page>` parser, wikitext cleaner |
 | `crates/docstore` | `docs.bin` / `docs.idx` / `links.bin`: dense doc IDs, zstd blocks, mmap reader |
-| `crates/index` | Inverted index (in-memory for now; on-disk in M3) |
-| `crates/query` | BM25 scoring (k1 = 1.2, b = 0.75), top-k min-heap, golden ranking tests |
+| `crates/index` | In-memory index (M1 reference), segment builder + k-way merge, delta/VByte postings in 128-doc blocks with skip pointers, mmap `DiskIndex`, checker |
+| `crates/query` | Doc-at-a-time BM25 search (k1 = 1.2, b = 0.75) over any `SearchIndex`, top-k min-heap, golden ranking tests |
 | `services/ingest` | `oxdex-ingest build / sample / audit / show` |
+| `services/indexer` | `oxdex-indexer build / check / search` |
 | `services/mini` | M1 CLI over a folder of `.txt` files (first line = title) |
 | `data/mini` | 20 sample articles |
 

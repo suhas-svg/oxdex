@@ -1,9 +1,17 @@
 [package]
 name = "oxdex-index"
-description = "Oxdex inverted index (M1: in-memory)"
+description = "Oxdex inverted index: in-memory (M1) and on-disk segments + merge (M3)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 oxdex-text.workspace = true
+memmap2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true

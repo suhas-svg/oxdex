@@ -8,3 +8,6 @@ license.workspace = true
 [dependencies]
 oxdex-text.workspace = true
 oxdex-index.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

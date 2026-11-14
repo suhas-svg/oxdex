@@ -4,6 +4,8 @@
 //!     oxdex-ingest sample --store data/out/simple -n 20
 //!     oxdex-ingest show   --store data/out/simple 42
 
+mod mem;
+
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -249,10 +251,13 @@ fn build(
             last_log = Instant::now();
             let secs = started.elapsed().as_secs_f64();
             let bytes_done = chunk.last().map_or(0, |r| r.end);
+            let (rss, peak) = mem::rss().unwrap_or((0, 0));
             info!(
                 streams = format!("{done}/{}", streams.len()),
                 pages = pages_seen,
                 mb_per_s = format!("{:.1}", bytes_done as f64 / 1e6 / secs),
+                rss_mb = mem::mb(rss),
+                peak_rss_mb = mem::mb(peak),
                 elapsed_s = format!("{secs:.0}"),
                 "progress"
             );
@@ -277,6 +282,7 @@ fn build(
         redirects = num_redirects,
         raw_text_mb = summary.raw_bytes / 1_000_000,
         docs_bin_mb = summary.docs_bytes / 1_000_000,
+        peak_rss_mb = mem::mb(mem::rss().map_or(0, |(_, peak)| peak)),
         elapsed_s = format!("{elapsed:.1}"),
         "ingest done"
     );

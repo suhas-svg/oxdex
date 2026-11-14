@@ -7,6 +7,7 @@ members = [
     "crates/index",
     "crates/query",
     "services/ingest",
+    "services/indexer",
     "services/mini",
 ]
 
@@ -39,6 +40,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 proptest = "1"
 tempfile = "3"
+windows-sys = { version = "0.60", features = ["Win32_System_ProcessStatus", "Win32_System_Threading"] }
 
 [profile.release]
 debug = 1
