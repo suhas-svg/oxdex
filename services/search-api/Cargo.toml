@@ -1,0 +1,28 @@
+[package]
+name = "oxdex-search-api"
+description = "Oxdex HTTP search service and web page"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "oxdex-search-api"
+path = "src/main.rs"
+
+[dependencies]
+oxdex-index.workspace = true
+oxdex-query.workspace = true
+oxdex-docstore.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

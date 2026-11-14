@@ -156,7 +156,13 @@ impl SearchIndex for DiskIndex {
     }
 
     fn avgdl(&self) -> f64 {
-        self.meta.avgdl
+        // Recomputed from the exact integers: the float in meta.json can come
+        // back one ULP off after a JSON round trip, which would shift scores.
+        if self.meta.num_docs == 0 {
+            0.0
+        } else {
+            self.meta.total_tokens as f64 / f64::from(self.meta.num_docs)
+        }
     }
 
     fn doc_len(&self, doc: DocId) -> u32 {

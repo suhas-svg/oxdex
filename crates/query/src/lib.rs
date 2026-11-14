@@ -1,17 +1,24 @@
-//! Query evaluation and BM25 ranking.
+//! Query parsing, matching, BM25 ranking and snippets.
 //!
-//! Search walks all query terms' posting lists together, document at a time
-//! (always the smallest current doc ID), so memory stays O(terms + k) no matter
-//! how large the corpus is. M3 uses OR semantics; AND / -exclude parsing and
-//! skip-pointer intersection arrive in M4.
+//! - [`parse`]: `fpga timing -xilinx`, `verilog OR vhdl`, stopword handling.
+//! - [`search_fields`]: AND (skip-pointer leapfrog) / OR (doc-at-a-time) over
+//!   body and title fields, `-exclude`, title boost, AND → OR fallback.
+//! - [`snippet`]: best ~160-character window with `<mark>` highlights.
+//! - [`search`]: the plain M1–M3 entry point, OR over a single field.
 
 mod bm25;
+mod engine;
+mod parse;
+mod snippet;
 mod topk;
 
 pub use bm25::Bm25;
+pub use engine::{FieldResult, Fields, MatchMode, Params, search_fields};
+pub use parse::{Mode, ParsedQuery, is_stopword, parse};
+pub use snippet::snippet;
 pub use topk::TopK;
 
-use oxdex_index::{DocId, NO_MORE_DOCS, PostingCursor, SearchIndex};
+use oxdex_index::{DocId, SearchIndex};
 use oxdex_text::Analyzer;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,40 +46,20 @@ pub fn query_terms(query: &str) -> Vec<String> {
     terms
 }
 
-/// Scores every document containing any query term with BM25 and returns the
-/// best `k`. Ties are broken by lower doc ID so results are deterministic.
+/// Scores every document containing any query term with BM25 over a single
+/// field (no stopword dropping, no title field) and returns the best `k`.
+/// Ties are broken by lower doc ID so results are deterministic.
 pub fn search<I: SearchIndex>(index: &I, query: &str, k: usize, bm25: &Bm25) -> SearchResult {
-    let n = index.num_docs();
-    let avgdl = index.avgdl();
-
-    // Per term, in query order: its IDF and a cursor over its postings.
-    let mut lists: Vec<(f64, I::Cursor<'_>)> = query_terms(query)
-        .iter()
-        .filter_map(|t| index.cursor(t))
-        .map(|c| (Bm25::idf(n, c.df()), c))
-        .collect();
-
-    let mut top = TopK::new(k);
-    let mut total_hits = 0usize;
-    loop {
-        let doc = lists.iter().map(|(_, c)| c.doc()).min().unwrap_or(NO_MORE_DOCS);
-        if doc == NO_MORE_DOCS {
-            break;
-        }
-        let doc_len = index.doc_len(doc);
-        let mut score = 0.0;
-        for (idf, c) in lists.iter_mut() {
-            if c.doc() == doc {
-                score += bm25.term_score(*idf, c.tf(), doc_len, avgdl);
-                c.next();
-            }
-        }
-        total_hits += 1;
-        top.push(Hit { doc, score });
-    }
-
+    let parsed = ParsedQuery {
+        terms: query_terms(query),
+        excluded: Vec::new(),
+        mode: Mode::Any,
+        dropped_stopwords: Vec::new(),
+    };
+    let params = Params { bm25: *bm25, ..Params::default() };
+    let r = search_fields(&Fields { body: index, title: None }, &parsed, k, 0, &params);
     SearchResult {
-        hits: top.into_sorted_vec(),
-        total_hits,
+        hits: r.hits,
+        total_hits: r.total_hits,
     }
 }
