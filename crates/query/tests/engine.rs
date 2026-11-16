@@ -12,6 +12,7 @@ fn terms_of(text: &str) -> BTreeSet<String> {
 
 fn q(terms: &[&str], excluded: &[&str], mode: Mode) -> ParsedQuery {
     ParsedQuery {
+        exact_title_docs: Vec::new(),
         terms: terms.iter().map(|s| s.to_string()).collect(),
         excluded: excluded.iter().map(|s| s.to_string()).collect(),
         mode,
@@ -178,4 +179,121 @@ fn exclusion_and_or_keyword() {
     let r = search_fields(&f, &parse("verilog OR vhdl"), 10, 0, &Params::default());
     assert_eq!(r.mode, MatchMode::Or);
     assert_eq!(r.total_hits, 2);
+}
+
+#[test]
+fn exact_title_match_outranks_partial_title_matches() {
+    let (body, title) = build(&[
+        ("Gravity (2013 movie)", "Gravity (2013 movie)", "Gravity is a movie. Gravity gravity gravity in space."),
+        ("Gravity", "Gravity Gravitation", "Gravity pulls objects together."),
+        ("Surface gravity", "Surface gravity", "The gravity at the surface of a planet."),
+    ]);
+    let fields = Fields { body: &body, title: Some(&title) };
+    let mut p = parse("gravity");
+    let plain = search_fields(&fields, &p, 10, 0, &Params::default());
+    assert_ne!(plain.hits[0].doc, 1, "without the lookup the movie's repeated word wins");
+
+    p.exact_title_docs = vec![1];
+    let r = search_fields(&fields, &p, 10, 0, &Params::default());
+    assert_eq!(r.hits[0].doc, 1);
+    assert_eq!(r.total_hits, 3, "the bonus reorders; it does not add or drop matches");
+}
+
+/// Zipf-ish vocabulary: a few very common words and some rare ones, so WAND
+/// has long cheap lists to skip and rare lists that set the threshold.
+const SKEWED: &[&str] = &[
+    "the", "the", "the", "the", "the", "the", "of", "of", "of", "of", "alpha", "alpha", "alpha", "beta",
+    "beta", "gamma", "delta", "omega", "zeta", "kappa",
+];
+
+fn skewed_corpus() -> impl Strategy<Value = Vec<(String, String)>> {
+    let doc = (
+        prop::collection::vec(prop::sample::select(SKEWED), 0..3),
+        prop::collection::vec(prop::sample::select(SKEWED), 0..40),
+    )
+        .prop_map(|(t, b)| (t.join(" "), b.join(" ")));
+    prop::collection::vec(doc, 1..900)
+}
+
+fn wand(on: bool) -> Params {
+    Params { min_and_hits: 0, wand: on, ..Params::default() }
+}
+
+fn ranking(r: &oxdex_query::FieldResult) -> Vec<(u32, u64)> {
+    r.hits.iter().map(|h| (h.doc, h.score.to_bits())).collect()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(96))]
+
+    /// WAND returns exactly the exhaustive OR ranking, on memory and disk.
+    #[test]
+    fn wand_matches_exhaustive_or(
+        docs in skewed_corpus(),
+        terms in prop::collection::vec(prop::sample::select(SKEWED), 1..5),
+        excluded in prop::collection::vec(prop::sample::select(&["zeta", "kappa", "omega"][..]), 0..2),
+        exact in prop::collection::vec(0u32..900, 0..3),
+        k in 1usize..12,
+        offset in 0usize..6,
+    ) {
+        let mut terms: Vec<&str> = terms;
+        terms.sort_unstable();
+        terms.dedup();
+        let excluded: Vec<&str> = excluded.into_iter().filter(|e| !terms.contains(e)).collect();
+        let mut parsed = q(&terms, &excluded, Mode::Any);
+        parsed.exact_title_docs = exact.into_iter().filter(|&d| (d as usize) < docs.len()).collect();
+
+        let mut body = InMemoryIndex::new();
+        let mut title = InMemoryIndex::new();
+        for (t, b) in &docs {
+            body.add(t, b);
+            title.add(t, "");
+        }
+        let mem = Fields { body: &body, title: Some(&title) };
+        let full = search_fields(&mem, &parsed, k, offset, &wand(false));
+        let fast = search_fields(&mem, &parsed, k, offset, &wand(true));
+        prop_assert_eq!(ranking(&fast), ranking(&full));
+        prop_assert!(full.total_exact);
+        if fast.total_exact {
+            prop_assert_eq!(fast.total_hits, full.total_hits);
+        } else {
+            prop_assert!(fast.total_hits <= full.total_hits, "a lower bound, never an overcount");
+            prop_assert!(fast.total_hits >= fast.hits.len() + offset.min(full.total_hits));
+        }
+
+        // Disk cursors use the bounds stored in the dictionary.
+        let dir = tempfile::tempdir().unwrap();
+        let (bdir, tdir) = (dir.path().join("body"), dir.path().join("title"));
+        let mut bb = IndexBuilder::create(&bdir, 8192).unwrap();
+        let mut tb = IndexBuilder::create(&tdir, 8192).unwrap();
+        for (t, b) in &docs {
+            let (terms, len) = count_terms(t, b);
+            bb.add_doc(&terms, len).unwrap();
+            let (terms, len) = count_terms(t, "");
+            tb.add_doc(&terms, len).unwrap();
+        }
+        bb.finish().unwrap();
+        tb.finish().unwrap();
+        let (db, dt) = (DiskIndex::open(&bdir).unwrap(), DiskIndex::open(&tdir).unwrap());
+        let disk = search_fields(&Fields { body: &db, title: Some(&dt) }, &parsed, k, offset, &wand(true));
+        prop_assert_eq!(ranking(&disk), ranking(&full));
+    }
+}
+
+#[test]
+fn wand_skips_work_on_common_terms() {
+    // One rare term in a handful of docs, one word in every doc.
+    let mut body = InMemoryIndex::new();
+    for i in 0..5000 {
+        let text = if i % 1000 == 7 { "the zebra zebra" } else { "the the the" };
+        body.add("", text);
+    }
+    let fields = Fields { body: &body, title: None };
+    let parsed = q(&["the", "zebra"], &[], Mode::Any);
+    let full = search_fields(&fields, &parsed, 3, 0, &wand(false));
+    let fast = search_fields(&fields, &parsed, 3, 0, &wand(true));
+    assert_eq!(ranking(&fast), ranking(&full));
+    assert!(!fast.total_exact, "WAND should have pruned the common-term docs");
+    assert_eq!(full.total_hits, 5000);
+    assert_eq!(fast.total_hits, 5000, "the lower bound is the longest list's df");
 }

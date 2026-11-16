@@ -29,7 +29,7 @@ pub(crate) const POST_MAGIC: &[u8; 8] = b"OXDXPOST";
 pub(crate) const DLEN_MAGIC: &[u8; 8] = b"OXDXDLEN";
 const SEG_MAGIC: &[u8; 8] = b"OXDXSEGM";
 pub(crate) const DICT_HEADER_LEN: usize = 32;
-pub(crate) const DICT_ENTRY_LEN: usize = 24;
+pub(crate) const DICT_ENTRY_LEN: usize = 32;
 pub(crate) const SMALL_HEADER_LEN: usize = 16;
 const SEG_HEADER_LEN: usize = 24;
 
@@ -70,6 +70,9 @@ pub struct IndexBuilder {
     peak_mem: usize,
     segments: Vec<PathBuf>,
     doclens: BufWriter<File>,
+    /// Doc lengths again in memory, for the per-term `min_doc_len` at merge
+    /// time (4 bytes per doc: 28 MB for English Wikipedia).
+    lens: Vec<u32>,
     next_doc: u64,
     total_tokens: u64,
     started: Instant,
@@ -108,6 +111,7 @@ impl IndexBuilder {
             peak_mem: 0,
             segments: Vec::new(),
             doclens,
+            lens: Vec::new(),
             next_doc: 0,
             total_tokens: 0,
             started: Instant::now(),
@@ -127,6 +131,7 @@ impl IndexBuilder {
         let dl_path = self.dir.join("doclens.bin");
         self.doclens.write_all(&doc_len.to_le_bytes()).map_err(io_err(&dl_path))?;
         self.total_tokens += u64::from(doc_len);
+        self.lens.push(doc_len);
 
         for (term, tf) in terms {
             if *tf == 0 {
@@ -213,7 +218,7 @@ impl IndexBuilder {
 
         let num_docs = u32::try_from(self.next_doc).map_err(|_| Error::TooManyDocs)?;
         let t0 = Instant::now();
-        let (num_terms, postings_bytes, dict_bytes) = merge(&self.segments, &self.dir)?;
+        let (num_terms, postings_bytes, dict_bytes) = merge(&self.segments, &self.dir, &self.lens)?;
         fs::remove_dir_all(&self.seg_dir).map_err(io_err(&self.seg_dir))?;
         let merge_secs = t0.elapsed().as_secs_f64();
 
@@ -337,7 +342,7 @@ fn decode_pairs(pairs: &[u8], df: u32, docs: &mut Vec<DocId>, tfs: &mut Vec<u32>
 
 /// Merges segments into `terms.dict` + `postings.bin`. Returns
 /// `(num_terms, postings_bytes, dict_bytes)`.
-fn merge(segments: &[PathBuf], dir: &Path) -> Result<(u64, u64, u64)> {
+fn merge(segments: &[PathBuf], dir: &Path, lens: &[u32]) -> Result<(u64, u64, u64)> {
     let mut readers: Vec<SegmentReader> = segments.iter().map(|p| SegmentReader::open(p)).collect::<Result<_>>()?;
     let mut current: Vec<Option<SegEntry>> = Vec::with_capacity(readers.len());
     let mut heap: BinaryHeap<Reverse<(Vec<u8>, usize)>> = BinaryHeap::new();
@@ -404,6 +409,10 @@ fn merge(segments: &[PathBuf], dir: &Path) -> Result<(u64, u64, u64)> {
         entry[8..16].copy_from_slice(&post_pos.to_le_bytes());
         entry[16..20].copy_from_slice(&(docs.len() as u32).to_le_bytes());
         entry[20..24].copy_from_slice(&(term.len() as u32).to_le_bytes());
+        let max_tf = tfs.iter().copied().max().unwrap_or(0);
+        let min_dl = docs.iter().map(|&d| lens.get(d as usize).copied().unwrap_or(0)).min().unwrap_or(0);
+        entry[24..28].copy_from_slice(&max_tf.to_le_bytes());
+        entry[28..32].copy_from_slice(&min_dl.to_le_bytes());
         dict.write_all(&entry).map_err(io_err(&dict_path))?;
         strs.write_all(&term).map_err(io_err(&heap_path))?;
 

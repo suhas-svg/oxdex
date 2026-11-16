@@ -51,6 +51,7 @@ pub fn query_terms(query: &str) -> Vec<String> {
 /// Ties are broken by lower doc ID so results are deterministic.
 pub fn search<I: SearchIndex>(index: &I, query: &str, k: usize, bm25: &Bm25) -> SearchResult {
     let parsed = ParsedQuery {
+        exact_title_docs: Vec::new(),
         terms: query_terms(query),
         excluded: Vec::new(),
         mode: Mode::Any,

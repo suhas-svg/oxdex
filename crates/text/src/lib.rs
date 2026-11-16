@@ -54,6 +54,12 @@ impl Analyzer {
             .map(move |(i, w)| (i, w, self.term(w)))
     }
 
+    /// The words [`tokens`](Self::tokens) would analyze, with byte offsets,
+    /// before lowercasing and stemming. Lets callers skip words cheaply.
+    pub fn words_with_offsets<'a>(&self, text: &'a str) -> impl Iterator<Item = (usize, &'a str)> + 'a {
+        text.unicode_word_indices().filter(|(_, w)| w.chars().count() <= MAX_TOKEN_CHARS)
+    }
+
     /// The index term for one word: lowercased, then stemmed.
     pub fn term(&self, word: &str) -> String {
         let lower = word.to_lowercase();

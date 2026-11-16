@@ -52,6 +52,19 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
+    /// Load an `id<TAB>text` file (e.g. MS MARCO's collection.tsv) into a
+    /// document store. IDs must run 0, 1, 2, … in order, so doc ID = line ID.
+    Tsv {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Used as each doc's URL: `<prefix><id>`.
+        #[arg(long, default_value = "msmarco:")]
+        url_prefix: String,
+        #[arg(long)]
+        force: bool,
+    },
     /// Print N random articles to eyeball the cleaner.
     Sample {
         #[arg(long)]
@@ -96,6 +109,7 @@ fn main() -> Result<()> {
         }
         Cmd::Sample { store, n, seed, chars } => sample(&store, n, seed, chars),
         Cmd::Audit { store, examples } => audit(&store, examples),
+        Cmd::Tsv { input, out, url_prefix, force } => tsv(&input, &out, &url_prefix, force),
         Cmd::Show { store, id } => show(&store, id),
     }
 }
@@ -441,5 +455,41 @@ fn audit(store: &Path, examples: usize) -> Result<()> {
 fn show(store: &Path, id: u32) -> Result<()> {
     let d = DocStore::open(store)?.get(id)?;
     println!("[{}] {}\n{}\n\n{}", d.id, d.title, d.url, d.text);
+    Ok(())
+}
+
+fn tsv(input: &Path, out: &Path, url_prefix: &str, force: bool) -> Result<()> {
+    use std::io::BufRead;
+    let started = Instant::now();
+    if out.join("docs.idx").exists() && !force {
+        bail!("{} already holds a store; pass --force to overwrite", out.display());
+    }
+    std::fs::create_dir_all(out)?;
+    let mut w = DocStoreWriter::create(out)?;
+    let reader = BufReader::with_capacity(4 << 20, File::open(input).with_context(|| format!("opening {}", input.display()))?);
+    let mut n: u64 = 0;
+    let mut last_log = Instant::now();
+    for line in reader.lines() {
+        let line = line?;
+        let (id, text) = line.split_once('\t').with_context(|| format!("line {n}: no tab"))?;
+        let id: u64 = id.trim().parse().with_context(|| format!("line {n}: bad id {id:?}"))?;
+        if id != n {
+            bail!("line {n} has id {id}; ids must run 0, 1, 2, … so doc IDs match them");
+        }
+        w.add("", &format!("{url_prefix}{id}"), text, &[])?;
+        n += 1;
+        if last_log.elapsed().as_secs() >= 10 {
+            last_log = Instant::now();
+            info!(docs = n, elapsed_s = format!("{:.0}", started.elapsed().as_secs_f64()), "loading");
+        }
+    }
+    let summary = w.finish()?;
+    info!(
+        docs = summary.num_docs,
+        raw_mb = summary.raw_bytes / 1_000_000,
+        docs_mb = summary.docs_bytes / 1_000_000,
+        secs = format!("{:.1}", started.elapsed().as_secs_f64()),
+        "tsv store done"
+    );
     Ok(())
 }

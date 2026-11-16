@@ -27,14 +27,23 @@ pub struct AppState {
     pub engine: Arc<OnceLock<Arc<Engine>>>,
     pub latencies: Arc<Mutex<Latencies>>,
     pub started: Instant,
+    /// At most one search per core runs at a time; the rest wait here, in
+    /// arrival order. Without it, 50 concurrent searches time-slice 12 cores
+    /// and every one of them gets slower.
+    pub search_slots: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {
     pub fn new() -> Self {
+        Self::with_search_slots(std::thread::available_parallelism().map_or(4, std::num::NonZero::get))
+    }
+
+    pub fn with_search_slots(slots: usize) -> Self {
         Self {
             engine: Arc::new(OnceLock::new()),
             latencies: Arc::new(Mutex::new(Latencies::new(100_000))),
             started: Instant::now(),
+            search_slots: Arc::new(tokio::sync::Semaphore::new(slots.max(1))),
         }
     }
 
@@ -110,6 +119,11 @@ async fn search(
     }
     let engine = st.engine()?;
 
+    let _slot = st
+        .search_slots
+        .acquire()
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "shutting down".into()))?;
     let resp = tokio::task::spawn_blocking(move || engine.search(&q, k, offset))
         .await
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("search task failed: {e}")))?

@@ -61,6 +61,11 @@ impl TopK {
         }
     }
 
+    /// Score a new hit must reach to get in, once `k` hits are held.
+    pub fn threshold(&self) -> Option<f64> {
+        if self.heap.len() < self.k { None } else { self.heap.peek().map(|r| r.0.score) }
+    }
+
     /// Best hit first.
     pub fn into_sorted_vec(self) -> Vec<Hit> {
         // into_sorted_vec is ascending by Ord, i.e. best (least "worse") first.

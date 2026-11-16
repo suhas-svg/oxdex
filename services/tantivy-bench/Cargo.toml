@@ -1,0 +1,15 @@
+[package]
+name = "oxdex-tantivy-bench"
+description = "Builds a tantivy index over the Oxdex doc store and times the same queries, for comparison"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Comparison tool only. The rule "no search library in core crates" holds:
+# nothing in crates/ or the Oxdex services depends on this.
+[dependencies]
+oxdex-docstore.workspace = true
+tantivy = "0.22"
+clap.workspace = true
+anyhow.workspace = true

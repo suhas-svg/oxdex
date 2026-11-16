@@ -60,7 +60,7 @@ async function run(q, offset) {
     return;
   }
   const rtt = performance.now() - started;
-  const n = body.total_hits.toLocaleString();
+  const n = (body.total_exact ? "" : "at least ") + body.total_hits.toLocaleString();
   const fell = body.mode === "and_fell_back_to_or" ? " · few documents had every word, so showing any-word matches" : "";
   setStatus(`${n} result${body.total_hits === 1 ? "" : "s"} in ${body.took_ms.toFixed(2)} ms (round trip ${rtt.toFixed(0)} ms)${fell}`);
 

@@ -103,11 +103,20 @@ impl InMemoryIndex {
 pub struct SliceCursor<'a> {
     postings: &'a [Posting],
     i: usize,
+    max_tf: u32,
+    min_doc_len: u32,
 }
 
 impl<'a> SliceCursor<'a> {
+    /// A cursor with always-safe score bounds; see [`Self::with_bounds`].
     pub fn new(postings: &'a [Posting]) -> Self {
-        Self { postings, i: 0 }
+        Self { postings, i: 0, max_tf: u32::MAX, min_doc_len: 0 }
+    }
+
+    pub fn with_bounds(mut self, max_tf: u32, min_doc_len: u32) -> Self {
+        self.max_tf = max_tf;
+        self.min_doc_len = min_doc_len;
+        self
     }
 }
 
@@ -131,6 +140,14 @@ impl PostingCursor for SliceCursor<'_> {
     fn df(&self) -> u32 {
         self.postings.len() as u32
     }
+
+    fn max_tf(&self) -> u32 {
+        self.max_tf
+    }
+
+    fn min_doc_len(&self) -> u32 {
+        self.min_doc_len
+    }
 }
 
 impl SearchIndex for InMemoryIndex {
@@ -149,7 +166,12 @@ impl SearchIndex for InMemoryIndex {
     }
 
     fn cursor(&self, term: &str) -> Option<SliceCursor<'_>> {
-        self.postings.get(term).map(|p| SliceCursor::new(p))
+        // The reference index computes exact bounds by scanning the list.
+        self.postings.get(term).map(|p| {
+            let max_tf = p.iter().map(|x| x.tf).max().unwrap_or(0);
+            let min_dl = p.iter().map(|x| self.doc_lens[x.doc as usize]).min().unwrap_or(0);
+            SliceCursor::new(p).with_bounds(max_tf, min_dl)
+        })
     }
 }
 

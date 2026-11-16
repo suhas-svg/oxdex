@@ -27,6 +27,17 @@ pub struct ParsedQuery {
     pub mode: Mode,
     /// Stopwords that were dropped from `terms`.
     pub dropped_stopwords: Vec<String>,
+    /// Docs whose title (or a redirect to them) is exactly this query. The
+    /// caller fills it from the index's title keys; they get `Params::exact_title_bonus`.
+    pub exact_title_docs: Vec<oxdex_index::DocId>,
+}
+
+impl ParsedQuery {
+    /// True when the query is plain words: no `OR` and no exclusions, so it
+    /// can be looked up as a title.
+    pub fn is_plain(&self) -> bool {
+        self.mode == Mode::All && self.excluded.is_empty()
+    }
 }
 
 const STOPWORDS: &[&str] = &[
@@ -84,6 +95,7 @@ pub fn parse(query: &str) -> ParsedQuery {
     }
 
     ParsedQuery {
+        exact_title_docs: Vec::new(),
         terms,
         excluded,
         mode,
