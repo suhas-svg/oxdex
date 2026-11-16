@@ -10,6 +10,7 @@ members = [
     "services/indexer",
     "services/mini",
     "services/search-api",
+    "services/tantivy-bench",
 ]
 
 [workspace.package]
@@ -41,8 +42,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 proptest = "1"
 tempfile = "3"
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 windows-sys = { version = "0.60", features = ["Win32_System_ProcessStatus", "Win32_System_Threading"] }
 
 [profile.release]

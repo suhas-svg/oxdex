@@ -14,6 +14,7 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use oxdex_docstore::{Doc, DocStore};
+use oxdex_index::titlekeys::TitleKeysWriter;
 use oxdex_index::{DiskIndex, IndexBuilder, check, count_terms};
 use oxdex_query::{Bm25, search};
 use rayon::prelude::*;
@@ -95,6 +96,8 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
     let redirects = load_redirects(store)?;
     let mut builder = IndexBuilder::create(out, mem_mb * 1024 * 1024)?;
     let mut title_builder = IndexBuilder::create(out.join("title"), (mem_mb / 4).max(64) * 1024 * 1024)?;
+    // Exact-title lookup over the same titles and redirects.
+    let mut title_keys = TitleKeysWriter::default();
     let mut docs_iter = ds.iter();
     let mut last_log = Instant::now();
     let mut batch_docs: Vec<Doc> = Vec::with_capacity(batch);
@@ -124,6 +127,10 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
                 bail!("doc store gave doc {} where {id} was expected", d.id);
             }
             title_builder.add_doc(&tterms, tlen)?;
+            title_keys.add(id, &d.title);
+            for alt in redirects.get(d.title.as_str()).into_iter().flatten() {
+                title_keys.add(id, alt);
+            }
         }
 
         if last_log.elapsed().as_secs() >= 10 {
@@ -145,6 +152,8 @@ fn build(store: &Path, out: &Path, mem_mb: usize, batch: usize, force: bool) -> 
 
     let tokenize_secs = started.elapsed().as_secs_f64();
     drop(redirects);
+    let keys = title_keys.write(out)?;
+    info!(keys, "title keys written");
     info!(segments = builder.num_segments() + 1, "all docs added; merging segments");
     let tstats = title_builder.finish()?;
     info!(

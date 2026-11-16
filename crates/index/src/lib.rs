@@ -15,9 +15,10 @@
 //!
 //! | File | Layout |
 //! | --- | --- |
-//! | `terms.dict` | 32-byte header (`OXDXDICT`, version, reserved, u64 num_terms, u64 heap_offset); `num_terms` × 24-byte entries sorted by term bytes (`u64 str_off, u64 post_off, u32 df, u32 str_len`); then the term string heap |
+//! | `terms.dict` | 32-byte header (`OXDXDICT`, version, reserved, u64 num_terms, u64 heap_offset); `num_terms` × 32-byte entries sorted by term bytes (`u64 str_off, u64 post_off, u32 df, u32 str_len, u32 max_tf, u32 min_doc_len`); then the term string heap |
 //! | `postings.bin` | 16-byte header (`OXDXPOST`); per term, see [`postings`] |
 //! | `doclens.bin` | 16-byte header (`OXDXDLEN`); one u32 token count per doc ID |
+//! | `title_keys.bin` | Optional exact-title lookup, see [`titlekeys`] |
 //! | `meta.json` | [`IndexMeta`]; written last, so its presence marks a finished build |
 
 mod builder;
@@ -25,6 +26,7 @@ mod check;
 mod disk;
 mod memory;
 pub mod postings;
+pub mod titlekeys;
 pub mod vbyte;
 
 use std::collections::HashMap;
@@ -46,7 +48,7 @@ pub type DocId = u32;
 pub const NO_MORE_DOCS: DocId = u32::MAX;
 
 /// On-disk format version. Bump on any layout change; readers refuse others.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// A forward-only walk over one term's posting list, in doc ID order.
 pub trait PostingCursor {
@@ -60,6 +62,11 @@ pub trait PostingCursor {
     fn advance(&mut self, target: DocId);
     /// Document frequency: the list's total length.
     fn df(&self) -> u32;
+    /// Largest tf anywhere in the list. With [`Self::min_doc_len`] it bounds
+    /// the BM25 score this term can give any document, for any k1 and b.
+    fn max_tf(&self) -> u32;
+    /// Length of the shortest document in the list.
+    fn min_doc_len(&self) -> u32;
 }
 
 /// What the query engine needs from an index.

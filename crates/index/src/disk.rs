@@ -26,17 +26,19 @@ pub struct DiskIndex {
 pub struct TermEntry<'a> {
     pub term: &'a [u8],
     pub df: u32,
+    pub max_tf: u32,
+    pub min_doc_len: u32,
     pub postings: &'a [u8],
 }
 
-fn map(path: &Path) -> Result<Mmap> {
+pub(crate) fn map(path: &Path) -> Result<Mmap> {
     let file = File::open(path).map_err(io_err(path))?;
     // SAFETY: index files are written once and never modified in place; a
     // rebuild goes to a new directory (Windows cannot overwrite mapped files).
     unsafe { Mmap::map(&file) }.map_err(io_err(path))
 }
 
-fn check_magic(data: &[u8], magic: &[u8; 8], path: &Path, min_len: usize) -> Result<()> {
+pub(crate) fn check_magic(data: &[u8], magic: &[u8; 8], path: &Path, min_len: usize) -> Result<()> {
     if data.len() < min_len || &data[..8] != magic {
         return Err(Error::BadMagic { path: path.to_owned() });
     }
@@ -125,7 +127,10 @@ impl DiskIndex {
         let (_, post_off, df, _) = self.entry_at(i);
         let end = if i + 1 < self.num_terms { self.entry_at(i + 1).1 } else { self.post.len() as u64 };
         let postings = self.post.get(post_off as usize..end as usize).unwrap_or(&[]);
-        TermEntry { term: self.term_bytes(i), df, postings }
+        let at = DICT_HEADER_LEN + i * DICT_ENTRY_LEN;
+        let max_tf = u32_at(&self.dict[at..], 24);
+        let min_doc_len = u32_at(&self.dict[at..], 28);
+        TermEntry { term: self.term_bytes(i), df, max_tf, min_doc_len, postings }
     }
 
     /// Binary search over the sorted dictionary.
@@ -172,6 +177,6 @@ impl SearchIndex for DiskIndex {
 
     fn cursor(&self, term: &str) -> Option<BlockCursor<'_>> {
         let e = self.term_entry(self.find(term)?);
-        Some(BlockCursor::new(e.postings, e.df))
+        Some(BlockCursor::new(e.postings, e.df).with_bounds(e.max_tf, e.min_doc_len))
     }
 }

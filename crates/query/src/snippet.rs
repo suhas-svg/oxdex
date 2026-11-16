@@ -15,12 +15,7 @@ struct Match {
 /// Builds an HTML-safe snippet of about `width` characters.
 pub fn snippet(text: &str, terms: &[String], width: usize) -> String {
     let scan = &text[..text.floor_char_boundary(SCAN_BYTES.min(text.len()))];
-    let matches: Vec<Match> = Analyzer::global()
-        .tokens_with_offsets(scan)
-        .filter_map(|(start, word, term)| {
-            terms.iter().position(|t| *t == term).map(|i| Match { start, end: start + word.len(), term: i })
-        })
-        .collect();
+    let matches = find_matches(scan, terms);
 
     if matches.is_empty() {
         let end = cut_forward(text, 0, width);
@@ -51,6 +46,26 @@ pub fn snippet(text: &str, terms: &[String], width: usize) -> String {
     let start = cut_backward(text, matches[best_i].start, lead);
     let end = cut_forward(text, start, width).max(matches[best_j - 1].end);
     wrap(text, start, end, &matches[best_i..best_j])
+}
+
+/// Every word in `text` whose index term is one of `terms`.
+///
+/// Stemming is the expensive part, and it only rewrites suffixes, so a word
+/// can only stem to a term that starts with the word's own (lowercased) first
+/// character. Checking that first skips stemming for nearly every word.
+fn find_matches(text: &str, terms: &[String]) -> Vec<Match> {
+    let analyzer = Analyzer::global();
+    let firsts: Vec<char> = terms.iter().filter_map(|t| t.chars().next()).collect();
+    analyzer
+        .words_with_offsets(text)
+        .filter(|(_, w)| {
+            w.chars().next().and_then(|c| c.to_lowercase().next()).is_some_and(|c| firsts.contains(&c))
+        })
+        .filter_map(|(start, word)| {
+            let term = analyzer.term(word);
+            terms.iter().position(|t| *t == term).map(|i| Match { start, end: start + word.len(), term: i })
+        })
+        .collect()
 }
 
 /// A word-boundary position at most `back` bytes before `from`.
@@ -155,5 +170,20 @@ mod tests {
     fn stems_match_inflections() {
         let s = snippet("He was running fast while others ran.", &terms(&["run"]), 160);
         assert!(s.contains("<mark>running</mark>"), "{s}");
+    }
+
+    #[test]
+    fn first_letter_filter_finds_the_same_matches_as_stemming_everything() {
+        let text = "Dying stars, lying data and tying knots. The skies over İstanbul; ÅNGSTRÖM units.                     Running runners ran; happily the happy dogs danced. Ελληνικά ΣΟΦΙΑ σοφία. Généralement, ok.";
+        let words = ["die", "lie", "tie", "sky", "istanbul", "ångström", "run", "happi", "danc", "σοφια", "general", "ok"];
+        let terms: Vec<String> = words.iter().map(|w| Analyzer::global().term(w)).collect();
+        let slow: Vec<(usize, usize)> = Analyzer::global()
+            .tokens_with_offsets(text)
+            .filter(|(_, _, t)| terms.contains(t))
+            .map(|(s, w, _)| (s, s + w.len()))
+            .collect();
+        let fast: Vec<(usize, usize)> = find_matches(text, &terms).iter().map(|m| (m.start, m.end)).collect();
+        assert_eq!(fast, slow);
+        assert!(fast.len() >= 10, "the sample should exercise real matches: {fast:?}");
     }
 }

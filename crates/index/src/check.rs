@@ -69,6 +69,14 @@ pub fn check(index: &DiskIndex, mut progress: impl FnMut(u64)) -> CheckReport {
                     r.error(format!("term {shown:?} points at doc {last}, but there are {num_docs} docs"));
                     continue;
                 }
+                let max_tf = tfs.iter().copied().max().unwrap_or(0);
+                let min_dl = docs.iter().map(|&d| index.doc_len(d)).min().unwrap_or(0);
+                if (max_tf, min_dl) != (e.max_tf, e.min_doc_len) {
+                    r.error(format!(
+                        "term {shown:?}: dictionary says max_tf {} / min_doc_len {}, list has {max_tf} / {min_dl}",
+                        e.max_tf, e.min_doc_len
+                    ));
+                }
                 for (d, tf) in docs.iter().zip(&tfs) {
                     per_doc[*d as usize] += u64::from(*tf);
                 }

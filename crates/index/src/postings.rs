@@ -120,6 +120,8 @@ pub struct BlockCursor<'a> {
     len: usize,
     i: usize,
     done: bool,
+    max_tf: u32,
+    min_doc_len: u32,
 }
 
 impl<'a> BlockCursor<'a> {
@@ -137,6 +139,9 @@ impl<'a> BlockCursor<'a> {
             len: 0,
             i: 0,
             done: true,
+            // Bounds that are always safe; `with_bounds` tightens them.
+            max_tf: u32::MAX,
+            min_doc_len: 0,
         };
         if df > 0 && bytes.len() >= skip_len {
             (c.skips, c.data) = bytes.split_at(skip_len);
@@ -144,6 +149,13 @@ impl<'a> BlockCursor<'a> {
             c.load_block(0);
         }
         c
+    }
+
+    /// Sets the score-bound inputs stored in the dictionary.
+    pub fn with_bounds(mut self, max_tf: u32, min_doc_len: u32) -> Self {
+        self.max_tf = max_tf;
+        self.min_doc_len = min_doc_len;
+        self
     }
 
     fn skip_last(&self, b: usize) -> DocId {
@@ -230,6 +242,14 @@ impl PostingCursor for BlockCursor<'_> {
 
     fn df(&self) -> u32 {
         self.df as u32
+    }
+
+    fn max_tf(&self) -> u32 {
+        self.max_tf
+    }
+
+    fn min_doc_len(&self) -> u32 {
+        self.min_doc_len
     }
 }
 
